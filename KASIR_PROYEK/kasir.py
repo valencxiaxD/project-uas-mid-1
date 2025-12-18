@@ -2,16 +2,11 @@ import sys
 import csv
 import os
 from datetime import datetime, timedelta
-import pandas as pd #gatau, cari deh nanti
-import matplotlib.pyplot as plt #gatau, cari deh nanti
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg #gatau, cari deh nanti
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from PyQt5.QtWidgets import (
-    QApplication, QWidget, QLabel, QLineEdit, QPushButton, 
-    QGridLayout, QTableWidget, QTableWidgetItem, QComboBox, 
-    QMessageBox, QStackedWidget, QHBoxLayout, QVBoxLayout,
-    QHeaderView, QFrame
-)
+from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QLineEdit, QPushButton, QGridLayout, QTableWidget, QTableWidgetItem, QComboBox, QMessageBox, QStackedWidget, QHBoxLayout, QVBoxLayout,QHeaderView, QFrame
 from PyQt5.QtCore import Qt
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -19,10 +14,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 USERS_FILE = os.path.join(BASE_DIR, "users.csv")
 TRANSAKSI_FILE = os.path.join(BASE_DIR, "data_transaksi.csv")
 
-
 # sistem autentikasi
 class SistemAuth:
-    # fungsi untuk membuat file user akun
     def __init__(self, user_account_file=USERS_FILE):
  
         self.user_account_file = user_account_file
@@ -32,19 +25,15 @@ class SistemAuth:
                 writer = csv.writer(f)
                 writer.writerow(["username", "password", "nama_kasir"])
     
-    # fungsi untuk signup akun
     def signup(self, username, password, nama_kasir):
         if self._is_username_exists(username):
             return False, "Username telah digunakan"
         
-        # membuka dan menambahkan username, password, nama_kasir
         with open(self.user_account_file, "a", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow([username, password, nama_kasir])
         return True, "Signup berhasil"
-    
-    # fungsi untuk akun login
-    # dia membuka file user akun dan membaca nya untuk memasuki sistem kasir
+
     def login(self, username, password):
         with open(self.user_account_file, "r", newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f)
@@ -52,7 +41,7 @@ class SistemAuth:
                 if row["username"] == username and row["password"] == password:
                     return True, row["nama_kasir"]
         return False, "Username atau password salah"
-    # digunakan untuk mevalidasi username, agar tidak menimpa oleh username yang sama
+
     def _is_username_exists(self, username):
         try:
             with open(self.user_account_file, "r", newline="", encoding="utf-8") as f:
@@ -67,9 +56,9 @@ class SistemAuth:
 # sistem kasir
 class SistemKasir:
     def __init__(self):
-        self.keranjang = [] # awalnya list kosong untuk menampung item yang akan dibeli
-        self.metode_pembayaran = "" # kosong agar di gui dia ga langsung otomatis dari salah satu pembayaran
-        self.menu_kafe = { # menu kafe, bentuknya dict karena agar mempunyai key:value
+        self.keranjang = [] 
+        self.metode_pembayaran = "" 
+        self.menu_kafe = { 
             "Kopi": {
                 "Espresso": 10000,
                 "Americano": 12000,
@@ -107,8 +96,7 @@ class SistemKasir:
         }
         self.csv_file = TRANSAKSI_FILE
         self._init_csv_file()
-    
-    # dia menulis data transaksi
+
     def _init_csv_file(self):
         if not os.path.exists(self.csv_file):
             with open(self.csv_file, "w", newline="", encoding="utf-8") as f:
@@ -283,6 +271,7 @@ class SistemKasir:
         self.metode_pembayaran = ""
         return {"status": True, "message": "Keranjang dikosongkan"}
 
+# sistem analisis
 class SistemAnalisis:
     
     def __init__(self, csv_file=TRANSAKSI_FILE):
@@ -299,6 +288,45 @@ class SistemAnalisis:
         df["Tanggal"] = pd.to_datetime(df["Tanggal"], errors="coerce")
         return df
     
+    def tren_mingguan(self):
+        df = self._load_data()
+        if df.empty:
+            return pd.Series(dtype=float)
+
+        hari_ini = datetime.now().date()
+        minggu_lalu = hari_ini - timedelta(days=6)
+
+        df = df[df["Tanggal"].dt.date >= minggu_lalu]
+        if df.empty:
+            return pd.Series(dtype=float)
+
+        df_group = df.groupby(df["Tanggal"].dt.strftime("%a"))["Subtotal"].sum()
+
+        urutan_hari = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        df_group = df_group.reindex(urutan_hari, fill_value=0)
+
+        return df_group
+
+    def tren_bulanan(self, bulan=None, tahun=None):
+        df = self._load_data()
+        if df.empty:
+            return pd.Series(dtype=float)
+
+        if bulan is None or tahun is None:
+            bulan = df["Tanggal"].dt.month.max()
+            tahun = df["Tanggal"].dt.year.max()
+
+        df = df[
+            (df["Tanggal"].dt.month == bulan) &
+            (df["Tanggal"].dt.year == tahun)
+        ]
+
+        if df.empty:
+            return pd.Series(dtype=float)
+
+        return df.groupby(df["Tanggal"].dt.day)["Subtotal"].sum().sort_index()
+
+
     def analisis_mingguan(self):
         df = self._load_data()
         if df.empty:
@@ -403,6 +431,13 @@ class AnalisisController:
     
     def __init__(self, sistem_analisis):
         self.sistem_analisis = sistem_analisis
+    
+    def get_tren_mingguan(self):
+        return self.sistem_analisis.tren_mingguan()
+
+    def get_tren_bulanan(self, bulan=None, tahun=None):
+        return self.sistem_analisis.tren_bulanan(bulan, tahun)
+
     
     def get_analisis_mingguan(self):
         return self.sistem_analisis.analisis_mingguan()
@@ -571,6 +606,29 @@ class GUISignup(QWidget):
         self.button_signup.setObjectName("signupbutton")
         self.layout.addWidget(self.button_signup, 4, 0, 1, 2)
     
+
+    def setup_connections(self):
+        self.button_signup.clicked.connect(self.handle_signup)
+        self.button_exit_arrow.clicked.connect(self.go_to_login)
+    
+    def handle_signup(self):
+        nama = self.input_nama.text()
+        username = self.input_username.text()
+        password = self.input_password.text()
+        
+        success, message = self.controller.handle_signup(username, password, nama)
+        
+        if success:
+            if success:
+                QMessageBox.information(self, "Berhasil", "Akun berhasil dibuat! Silakan login.")
+                self.go_to_login()
+        else:
+            QMessageBox.warning(self, "Gagal", message)
+    
+    def go_to_login(self):
+        self.main_app.login_page.reset_form()
+        self.main_app.go_to_login()
+
     def setup_stylesheet(self):
         BLUEBERRY = "#2C3F70"
         STRAWBERRY = "#A5231C"
@@ -626,29 +684,6 @@ class GUISignup(QWidget):
             background-color: {VIOLET};
         }}
         """)
-    
-    def setup_connections(self):
-        self.button_signup.clicked.connect(self.handle_signup)
-        self.button_exit_arrow.clicked.connect(self.go_to_login)
-    
-    def handle_signup(self):
-        nama = self.input_nama.text()
-        username = self.input_username.text()
-        password = self.input_password.text()
-        
-        success, message = self.controller.handle_signup(username, password, nama)
-        
-        if success:
-            if success:
-                QMessageBox.information(self, "Berhasil", "Akun berhasil dibuat! Silakan login.")
-                self.go_to_login()
-        else:
-            QMessageBox.warning(self, "Gagal", message)
-    
-    def go_to_login(self):
-        self.main_app.login_page.reset_form()
-        self.main_app.go_to_login()
-
 
 class GUIKasir(QWidget):
     
@@ -656,13 +691,15 @@ class GUIKasir(QWidget):
         super().__init__()
         self.controller = controller
         self.main_app = main_app
-        
+
         self.setWindowTitle("Kasir Brewalytica")
         
         self.setup_layout()
         self.setup_stylesheet()
         self.setup_connections()
     
+   
+
     def setup_layout(self):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(8, 8, 8, 8)
@@ -670,26 +707,25 @@ class GUIKasir(QWidget):
         
         header = QFrame()
         header.setObjectName("header")
-        header.setStyleSheet("QFrame#header{background: #8089D2; border-radius:4px;}")
         header.setFixedHeight(64)
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(12, 6, 12, 6)
         
         title = QLabel("BREWALYTICA CAFE")
-        title.setStyleSheet("background-color:#8089D2; color:#E8EBED; font:16pt 'Cooper Black'; font-weight:600;")
+        title.setObjectName('title_login')
         header_layout.addWidget(title)
         header_layout.addStretch(1)
         
         self.cashier_label = QLabel(f"Kasir: {self.main_app.current_kasir}")
-        self.cashier_label.setStyleSheet("color:#E8EBED; background-color:#8089D2; padding:4px 8px; border-radius:6px; font: 11pt 'Cooper Black';")
+        self.cashier_label.setObjectName('cashier_label')
         header_layout.addWidget(self.cashier_label)
         
         self.button_analisis = QPushButton("Analisis")
-        self.button_analisis.setStyleSheet("background-color:#a5c6db; border-radius:16px; font:14pt 'Cooper Black'; color:#E8EBED; padding:6px 12px;")
+        self.button_analisis.setObjectName('button_analisis')
         header_layout.addWidget(self.button_analisis)
         
         self.button_logout = QPushButton("Logout")
-        self.button_logout.setStyleSheet("background-color:#A5231C; border-radius:16px; font:14pt 'Cooper Black'; color:#E8EBED; padding:6px 12px;")
+        self.button_logout.setObjectName('button_logout')
         header_layout.addWidget(self.button_logout)
         
         main_layout.addWidget(header)
@@ -698,27 +734,30 @@ class GUIKasir(QWidget):
         body_layout.setSpacing(12)
 
         left_panel = QFrame()
-        left_panel.setStyleSheet("background:#E8EBED; border-radius:4px; color:#2C3F70;")
+        left_panel.setObjectName('left_panel')
         left_panel.setFixedWidth(380)
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(18, 18, 18, 18)
         left_layout.setSpacing(12)
         
         header_left = QLabel("INPUT PESANAN")
+        header_left.setObjectName('header_left')
         header_left.setAlignment(Qt.AlignCenter)
-        header_left.setStyleSheet("font-weight:700; font-size:14pt; color:#2C3F70;")
         left_layout.addWidget(header_left)
 
         left_layout.addWidget(QLabel("Kategori:"))
         self.kategori_cb = QComboBox()
+        self.kategori_cb.setObjectName('combo_box')
         self.kategori_cb.setFixedHeight(31)
         self.kategori_cb.addItem("Pilih Kategori")
         for kat in self.controller.sistem_kasir.get_kategori_menu():
             self.kategori_cb.addItem(kat)
+            self.kategori_cb.setObjectName('combo_box')
         left_layout.addWidget(self.kategori_cb)
 
         left_layout.addWidget(QLabel("Menu:"))
         self.menu_cb = QComboBox()
+        self.menu_cb.setObjectName('combo_box')
         self.menu_cb.addItem("Pilih Menu")
         self.menu_cb.setFixedHeight(31)
         left_layout.addWidget(self.menu_cb)
@@ -729,11 +768,12 @@ class GUIKasir(QWidget):
         left_layout.addWidget(self.jumlah_le)
 
         self.btn_tambah = QPushButton("+  TAMBAH KE KERANJANG")
-        self.btn_tambah.setStyleSheet("background:#2ca86b;color:white;padding:12px;border-radius:6px;font-weight:700;")
+        self.btn_tambah.setObjectName('button_tambah')
         left_layout.addWidget(self.btn_tambah)
 
         left_layout.addWidget(QLabel("Metode Pembayaran:"))
         self.metode_cb = QComboBox()
+        self.metode_cb.setObjectName('combo_box')
         self.metode_cb.addItems(["Pilih Metode", "Tunai", "QRIS", "Debit"])
         left_layout.addWidget(self.metode_cb)
         
@@ -741,12 +781,12 @@ class GUIKasir(QWidget):
         body_layout.addWidget(left_panel)
 
         right_panel = QFrame()
-        right_panel.setStyleSheet("background:#E8EBED; border-radius:4px; color:#2C3F70;")
+        right_panel.setObjectName('right_panel')
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(12, 12, 12, 12)
         
         header_right = QLabel("KERANJANG BELANJA")
-        header_right.setStyleSheet("font-weight:700; font-size:13pt; color:#2C3F70;")
+        header_right.setObjectName('header_right')
         right_layout.addWidget(header_right)
 
         self.table = QTableWidget(0, 5)
@@ -755,23 +795,142 @@ class GUIKasir(QWidget):
         right_layout.addWidget(self.table)
 
         self.btn_hapus = QPushButton("HAPUS ITEM TERPILIH")
-        self.btn_hapus.setStyleSheet("background-color:#A5231C; border-radius:16px; font:14pt 'Cooper Black'; color:#E8EBED; padding:8px;")
+        self.btn_hapus.setObjectName('button_hapus')
         right_layout.addWidget(self.btn_hapus, alignment=Qt.AlignCenter)
 
         self.total_label = QLabel("TOTAL: Rp 0")
-        self.total_label.setStyleSheet("font-weight:700; color:#c43a2c; font-size:14pt;")
+        self.total_label.setObjectName('total_label')
+        self.total_label.setStyleSheet("")
         self.total_label.setAlignment(Qt.AlignCenter)
         right_layout.addWidget(self.total_label)
 
         self.btn_proses = QPushButton("PROSES PEMBAYARAN")
-        self.btn_proses.setStyleSheet("background-color:#a5c6db; border-radius:16px; font:14pt 'Cooper Black'; color:#E8EBED; padding:14px;")
+        self.btn_proses.setObjectName('button_proses')
         right_layout.addWidget(self.btn_proses)
         
         body_layout.addWidget(right_panel, 1)
         main_layout.addLayout(body_layout)
     
     def setup_stylesheet(self):
-        self.setStyleSheet("background-color: #FBFCEE;")
+        BLUEBERRY = "#2C3F70"
+        STRAWBERRY = "#A5231C"
+        BUTTERCREAM = "#C8D4E5"
+        VIOLET = "#8089D2"
+        MERINGE = "#E8EBED"
+        BIRU = "#a5c6db"
+        HIJAU = "#2ca86b"
+        TOSCA = "#E1FFFF"
+        PUTIH = "#FFFFFF"
+        BIRU_TUA = "#035590"
+
+        self.setStyleSheet(f"""
+        QWidget {{
+            background-color: {MERINGE};
+        }}
+        
+        QFrame#header{{
+            background-color: {VIOLET}; 
+            border-radius:4px;
+        }}
+                           
+        QLabel#title_login{{
+            background-color:{VIOLET}; 
+            color:{MERINGE}; 
+            font:16pt 'Cooper Black'; 
+            font-weight:600;
+        }}
+                           
+        QLabel#cashier_label{{
+            color:{MERINGE}; 
+            background-color:{VIOLET}; 
+            padding:4px 8px; 
+            border-radius:6px; 
+            font: 11pt 'Cooper Black';
+        }}
+                           
+        QPushButton#button_analisis{{
+            background-color:{BIRU}; 
+            border-radius:16px; 
+            font:14pt 'Cooper Black';
+            color:{MERINGE}; 
+            padding:6px 12px
+        }}
+        
+        QPushButton#button_logout{{
+            background-color:{STRAWBERRY}; 
+            border-radius:16px; 
+            font:14pt 'Cooper Black'; 
+            color:{MERINGE}; 
+            padding:6px 12px
+        }}
+                           
+        QFrame#left_panel{{
+            background-color:{MERINGE}; 
+            border-radius:4px; 
+            color:{BLUEBERRY};
+        }}
+
+        QLabel#header_left{{
+            font-weight:700; 
+            font-size:14pt; 
+            color:{BLUEBERRY};
+        }}
+
+        QPushButton#button_tambah {{
+            background:{HIJAU};
+            color:{MERINGE};
+            padding:12px;
+            border-radius:6px;
+            font-weight:700;
+        }}
+
+        QFrame#right_panel {{
+            background:{MERINGE}; 
+            border-radius:4px;
+            color:{BLUEBERRY};
+        }}   
+        
+        QLabel#header_right {{
+            font-weight:700; 
+            font-size:13pt; 
+            color:{BLUEBERRY};
+        }}
+        
+        QPushButton#button_hapus {{
+            background-color:{STRAWBERRY}; 
+            border-radius:16px; 
+            font:14pt 'Cooper Black'; 
+            color:{MERINGE}; 
+            padding:8px;
+        }}
+
+        QLabel#total_label {{
+            font-weight:700; 
+            color:#c43a2c; 
+            font-size:14pt;
+        }}
+        
+        QPushButton#button_proses {{
+            background-color:{BIRU}; 
+            border-radius:16px; 
+            font:14pt 'Cooper Black'; 
+            color:{MERINGE}; padding:14px;
+        }}
+
+        QComboBox#combo_box {{
+            background-color: {MERINGE};
+            color: {BLUEBERRY};
+            border: 0.5px solid {BUTTERCREAM};
+        }}
+
+        QComboBox#combo_box:hover {{
+            background-color: {BUTTERCREAM};
+        }}
+
+        QComboBox#combo_box:focus {{
+            border: 0.5px solid {BLUEBERRY};
+        }}
+""")
     
     def setup_connections(self):
         self.kategori_cb.currentIndexChanged.connect(self.update_menu_options)
@@ -875,7 +1034,7 @@ class GUIAnalisis(QWidget):
         self.controller = controller
         self.main_app = main_app
         
-        self.setWindowTitle("Analisis Penjualan Brewalytica")
+        self.setWindowTitle("Analisis Penjualan")
         
         self.setup_layout()
         self.setup_stylesheet()
@@ -904,7 +1063,7 @@ class GUIAnalisis(QWidget):
         self.layout.addWidget(self.btn_monthly, 1, 1)
 
         self.fig = Figure(figsize=(8, 5))
-        self.canvas = FigureCanvasQTAgg(self.fig)
+        self.canvas = FigureCanvas(self.fig)
         self.layout.addWidget(self.canvas, 3, 0, 1, 2)
     
     def setup_stylesheet(self):
@@ -926,7 +1085,7 @@ class GUIAnalisis(QWidget):
         
         QPushButton#backBtn {{
             background-color: {STRAWBERRY};
-            color: white;
+            color: {MERINGE};
             padding: 6px 14px;
             border-radius: 6px;
             font-weight: bold;
@@ -934,7 +1093,7 @@ class GUIAnalisis(QWidget):
         
         QPushButton#analyzeBtn {{
             background-color: {BLUEBERRY};
-            color: white;
+            color: {MERINGE};
             padding: 10px;
             border-radius: 6px;
             font-weight: bold;
@@ -952,45 +1111,41 @@ class GUIAnalisis(QWidget):
         self.btn_monthly.clicked.connect(self.show_analisis_bulanan)
     
     def show_analisis_mingguan(self):
-        result = self.controller.get_analisis_mingguan()
-        
-        if not result["status"]:
-            QMessageBox.warning(self, "Peringatan", result.get("message", "Belum ada data"))
+        data = self.controller.get_tren_mingguan()
+
+        if data.empty or data.sum() == 0:
+            QMessageBox.warning(self, "Peringatan", "Belum ada data transaksi minggu ini")
             return
-        
+
         self.fig.clear()
         ax = self.fig.add_subplot(111)
-        
-        categories = ["Total Pendapatan", "Jumlah Item"]
-        values = [result["total"], result["jumlah_item"]]
-        
-        ax.bar(categories, values, color=["#8089D2", "#2C3F70"])
-        ax.set_title(f"Analisis Mingguan\n{result.get('rentang', '')}", color="#2C3F70", fontweight="bold")
-        ax.set_ylabel("Jumlah")
-        
+
+        ax.plot(data.index, data.values, marker='o', linewidth=2)
+        ax.set_title("Trend Penjualan 7 Hari Terakhir", fontweight="bold")
+        ax.set_xlabel("Hari")
+        ax.set_ylabel("Total Penjualan (Rp)")
+        ax.grid(True)
+
         self.canvas.draw()
-    
     def show_analisis_bulanan(self):
-        """Tampilkan analisis bulanan - menggunakan controller"""
-        result = self.controller.get_analisis_bulanan()
-        
-        if not result["status"]:
-            QMessageBox.warning(self, "Peringatan", result.get("message", "Belum ada data"))
+        data = self.controller.get_tren_bulanan()
+
+        if data.empty or data.sum() == 0:
+            QMessageBox.warning(self, "Peringatan", "Belum ada data transaksi bulan ini")
             return
-        
+
         self.fig.clear()
         ax = self.fig.add_subplot(111)
-        
-        categories = ["Total Pendapatan", "Jumlah Item"]
-        values = [result["total"], result["jumlah_item"]]
-        
-        ax.bar(categories, values, color=["#A5231C", "#8089D2"])
-        ax.set_title(f"Analisis Bulanan - Bulan {result['bulan']}/{result['tahun']}", 
-                    color="#2C3F70", fontweight="bold")
-        ax.set_ylabel("Jumlah")
-        
+
+        ax.plot(data.index, data.values, marker='o', linewidth=2)
+
+        ax.set_title("Trend Penjualan Bulanan", fontweight="bold")
+        ax.set_xlabel("Tanggal")
+        ax.set_ylabel("Total Penjualan (Rp)")
+        ax.grid(True)
+
         self.canvas.draw()
-    
+
     def go_back(self):
         self.main_app.go_to_kasir()
 
